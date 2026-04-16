@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Groq from "groq-sdk";
 import { rateLimit, getIP } from "@/lib/rate-limit";
 import { env } from "@/lib/env";
 import { createServerClient } from "@supabase/ssr";
@@ -151,8 +151,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!env.GEMINI_API_KEY) {
-    void writeLog({ type: "api_error", message: "GEMINI_API_KEY not configured", ip_address: ip });
+  if (!env.GROQ_API_KEY) {
+    void writeLog({ type: "api_error", message: "GROQ_API_KEY not configured", ip_address: ip });
     return NextResponse.json({ error: "AI service not configured" }, { status: 500 });
   }
 
@@ -212,15 +212,33 @@ export async function POST(req: NextRequest) {
     const bytes = await file.arrayBuffer();
     const base64 = Buffer.from(bytes).toString("base64");
 
-    const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
+    const groq = new Groq({ apiKey: env.GROQ_API_KEY });
 
-    const result = await model.generateContent([
-      { inlineData: { mimeType: file.type, data: base64 } },
-      buildPrompt(localContext),
-    ]);
+    const result = await groq.messages.create({
+      model: "llama-2-90b-vision-preview",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: file.type as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+                data: base64,
+              },
+            },
+            {
+              type: "text",
+              text: buildPrompt(localContext),
+            },
+          ],
+        },
+      ],
+      max_tokens: 2000,
+    });
 
-    let jsonStr = result.response.text().trim();
+    let jsonStr = (result.content[0] as { type: string; text?: string }).text?.trim() || "";
 
     // Strip markdown code fences if present
     if (jsonStr.startsWith("```")) {
