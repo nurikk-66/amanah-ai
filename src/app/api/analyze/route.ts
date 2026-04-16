@@ -150,10 +150,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!env.GROQ_API_KEY) {
-    void writeLog({ type: "api_error", message: "GROQ_API_KEY not configured", ip_address: ip });
-    return NextResponse.json({ error: "AI service not configured" }, { status: 500 });
-  }
+  // GROQ_API_KEY optional — local database matching is primary
 
   // ── Get current user (optional — anon scans are allowed) ─────────────────
   let userId: string | null = null;
@@ -206,43 +203,64 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const localContext = (formData.get("localContext") as string | null) || null;
-
-    // Use Groq API (text-based, no vision support on free tier)
-    const prompt = `${buildPrompt(localContext)}\n\nAnalyzing file: ${file.name} (${file.type})`;
-
-    const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        max_tokens: 2000,
-        messages: [
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-      }),
+    // ── Local Database Matching (Primary method) ────────────────────────────
+    const fileNameLower = file.name.toLowerCase();
+    const matchedEntries = HALAL_DICTIONARY.filter((entry) => {
+      const nameMatch = entry.name.toLowerCase().includes(fileNameLower) ||
+                        fileNameLower.includes(entry.name.toLowerCase());
+      const aliasMatch = (entry.aliases ?? []).some((a) =>
+        a.toLowerCase().includes(fileNameLower) || fileNameLower.includes(a.toLowerCase())
+      );
+      return nameMatch || aliasMatch;
     });
 
-    if (!groqResponse.ok) {
-      const errorData = await groqResponse.json();
-      throw new Error(`Groq API error: ${groqResponse.status} - ${JSON.stringify(errorData)}`);
+    let parsed;
+    if (matchedEntries.length > 0) {
+      // ── Build result from local matches ────────────────────────────────────
+      const ingredients = matchedEntries.map((entry) => ({
+        name: entry.name,
+        status: entry.halal ? "halal" : "haram",
+        risk: entry.halal ? "None" : "Critical",
+        jakim: entry.jakim_code || "JAKIM-UNK-000",
+        confidence: 95,
+        details: entry.halal
+          ? `${entry.name} is JAKIM-certified halal. ${entry.halal_alternative ? `Preferred: ${entry.halal_alternative}` : ""}`
+          : `${entry.name} is HARAM — ${entry.notes || "contains non-halal ingredients"}.`,
+      }));
+
+      const haram = ingredients.filter((i) => i.status === "haram").length;
+      const doubtful = ingredients.filter((i) => i.status === "doubtful").length;
+      const overallStatus = haram > 0 ? "haram" : doubtful > 0 ? "doubtful" : "halal";
+      const compliance = 100 - (haram * 30) - (doubtful * 10);
+
+      parsed = {
+        product: file.name.replace(/\.[^.]+$/, ""),
+        overallStatus,
+        riskLevel: haram > 0 ? "Critical" : doubtful > 0 ? "High" : "Low",
+        complianceScore: Math.max(0, compliance),
+        reason: `Local Halal Database Match — ${ingredients.length} ingredients verified.`,
+        ingredients,
+      };
+    } else {
+      // ── No matches in local DB — return "cannot analyze" ──────────────────
+      parsed = {
+        product: file.name.replace(/\.[^.]+$/, ""),
+        overallStatus: "doubtful",
+        riskLevel: "High",
+        complianceScore: 0,
+        reason: "Product not found in Amanah Halal Database. Please provide product name or ingredient list for manual verification.",
+        ingredients: [
+          {
+            name: "Unknown Ingredients",
+            status: "doubtful",
+            risk: "High",
+            jakim: "JAKIM-UNK-000",
+            confidence: 0,
+            details: "Product image does not provide sufficient ingredient information. Upload packaging with visible ingredients list or product name.",
+          },
+        ],
+      };
     }
-
-    const result = await groqResponse.json();
-    let jsonStr = result.choices?.[0]?.message?.content?.trim() || "";
-
-    // Strip markdown code fences if present
-    if (jsonStr.startsWith("```")) {
-      jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
-    }
-
-    const parsed = JSON.parse(jsonStr);
 
     // ── Log success ────────────────────────────────────────────────────────
     void writeLog({
