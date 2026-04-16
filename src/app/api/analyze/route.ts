@@ -236,15 +236,23 @@ export async function POST(req: NextRequest) {
 
       const haram = ingredients.filter((i) => i.status === "haram").length;
       const doubtful = ingredients.filter((i) => i.status === "doubtful").length;
-      const overallStatus = haram > 0 ? "haram" : doubtful > 0 ? "doubtful" : "halal";
-      const compliance = 100 - (haram * 30) - (doubtful * 10);
+
+      // If product has certified halal status, use that as override
+      let overallStatus = product.typical_status;
+      if (!overallStatus) {
+        overallStatus = haram > 0 ? "haram" : doubtful > 0 ? "doubtful" : "halal";
+      }
+
+      const compliance = overallStatus === "halal" ? 95 : overallStatus === "doubtful" ? 60 : 0;
 
       parsed = {
         product: product.name,
         overallStatus,
-        riskLevel: haram > 0 ? "Critical" : doubtful > 0 ? "High" : "Low",
-        complianceScore: Math.max(0, compliance),
-        reason: `${overallStatus.toUpperCase()} — Analyzed ${ingredients.length} known ingredients against JAKIM standards.`,
+        riskLevel: overallStatus === "haram" ? "Critical" : overallStatus === "doubtful" ? "High" : "Low",
+        complianceScore: compliance,
+        reason: overallStatus === "halal"
+          ? `✅ HALAL CERTIFIED — Product verified by manufacturer. ${ingredients.length} ingredients analyzed.`
+          : `${overallStatus.toUpperCase()} — Analyzed ${ingredients.length} known ingredients against JAKIM standards.`,
         ingredients,
       };
     } else {

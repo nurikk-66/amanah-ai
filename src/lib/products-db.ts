@@ -12,10 +12,10 @@ export interface ProductEntry {
 
 export const PRODUCTS_DATABASE: ProductEntry[] = [
   {
-    name: "Curry Noodles",
-    aliases: ["Curry noodle", "Curry instant noodles", "Maggi curry", "Maggy curry", "Maggi", "Maggy"],
-    ingredients: ["Wheat flour", "Curry flavoring", "MSG", "E631", "E627", "Palm oil", "Salt", "E471", "E481"],
-    typical_status: "doubtful",
+    name: "MAGGI® 2-Minute Noodles (Curry)",
+    aliases: ["Curry noodles", "Maggi curry", "Maggy curry", "Maggi", "Maggy", "MAGGI noodles"],
+    ingredients: ["Wheat flour", "Curry flavoring", "MSG (E621)", "E631 Disodium Inosinate", "E627 Disodium Guanylate", "Palm oil", "Salt", "E471 Mono & Diglycerides", "E481 Sodium Stearoyl Lactylate"],
+    typical_status: "halal",
   },
   {
     name: "Instant Ramen",
