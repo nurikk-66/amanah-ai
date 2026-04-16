@@ -218,7 +218,7 @@ export async function POST(req: NextRequest) {
         "Authorization": `Bearer ${env.GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "mixtral-8x7b-32768",
+        model: "gemma2-9b-it",
         max_tokens: 2000,
         messages: [
           {
