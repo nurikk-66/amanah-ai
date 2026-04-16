@@ -4,6 +4,7 @@ import { env } from "@/lib/env";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { HALAL_DICTIONARY } from "@/lib/halal-db";
+import { findProductByName } from "@/lib/products-db";
 
 // ── Pre-compute known terms for O(1) lookup ───────────────────────────────────
 const KNOWN_TERMS = new Set<string>();
@@ -204,28 +205,33 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Local Database Matching (Primary method) ────────────────────────────
-    const fileNameLower = file.name.toLowerCase();
-    const matchedEntries = HALAL_DICTIONARY.filter((entry) => {
-      const nameMatch = entry.name.toLowerCase().includes(fileNameLower) ||
-                        fileNameLower.includes(entry.name.toLowerCase());
-      const aliasMatch = (entry.aliases ?? []).some((a) =>
-        a.toLowerCase().includes(fileNameLower) || fileNameLower.includes(a.toLowerCase())
-      );
-      return nameMatch || aliasMatch;
-    });
+    const productName = file.name.replace(/\.[^.]+$/, ""); // Remove extension
+    const product = findProductByName(productName);
 
     let parsed;
-    if (matchedEntries.length > 0) {
-      // ── Build result from local matches ────────────────────────────────────
-      const ingredients = matchedEntries.map((entry) => ({
+    if (product) {
+      // ── Found product in database — analyze its known ingredients ─────────
+      const ingredientEntries = product.ingredients
+        .map((ingName) =>
+          HALAL_DICTIONARY.find((e) =>
+            e.name.toLowerCase().includes(ingName.toLowerCase()) ||
+            ingName.toLowerCase().includes(e.name.toLowerCase()) ||
+            (e.aliases ?? []).some((a) => a.toLowerCase().includes(ingName.toLowerCase()))
+          )
+        )
+        .filter(Boolean) as typeof HALAL_DICTIONARY;
+
+      const ingredients = ingredientEntries.map((entry) => ({
         name: entry.name,
-        status: entry.halal ? "halal" : "haram",
-        risk: entry.halal ? "None" : "Critical",
-        jakim: entry.jakim_code || "JAKIM-UNK-000",
-        confidence: 95,
-        details: entry.halal
-          ? `${entry.name} is JAKIM-certified halal. ${entry.halal_alternative ? `Preferred: ${entry.halal_alternative}` : ""}`
-          : `${entry.name} is HARAM — ${entry.notes || "contains non-halal ingredients"}.`,
+        status: entry.status,
+        risk: entry.status === "haram" ? "Critical" : entry.status === "doubtful" ? "High" : "None",
+        jakim: entry.jakimRef || "JAKIM-UNK-000",
+        confidence: 90,
+        details: entry.status === "haram"
+          ? `${entry.name} is HARAM — ${entry.description}`
+          : entry.status === "doubtful"
+          ? `${entry.name} requires supplier verification — ${entry.halal_alternative ? `Use ${entry.halal_alternative} instead` : "Source verification needed"}`
+          : `${entry.name} is halal-certified. ${entry.description}`,
       }));
 
       const haram = ingredients.filter((i) => i.status === "haram").length;
@@ -234,29 +240,29 @@ export async function POST(req: NextRequest) {
       const compliance = 100 - (haram * 30) - (doubtful * 10);
 
       parsed = {
-        product: file.name.replace(/\.[^.]+$/, ""),
+        product: product.name,
         overallStatus,
         riskLevel: haram > 0 ? "Critical" : doubtful > 0 ? "High" : "Low",
         complianceScore: Math.max(0, compliance),
-        reason: `Local Halal Database Match — ${ingredients.length} ingredients verified.`,
+        reason: `${overallStatus.toUpperCase()} — Analyzed ${ingredients.length} known ingredients against JAKIM standards.`,
         ingredients,
       };
     } else {
-      // ── No matches in local DB — return "cannot analyze" ──────────────────
+      // ── Product not in database — cannot analyze ──────────────────────────
       parsed = {
-        product: file.name.replace(/\.[^.]+$/, ""),
+        product: productName,
         overallStatus: "doubtful",
         riskLevel: "High",
         complianceScore: 0,
-        reason: "Product not found in Amanah Halal Database. Please provide product name or ingredient list for manual verification.",
+        reason: "Product not recognized. Upload clearer label showing product name or ingredient list.",
         ingredients: [
           {
-            name: "Unknown Ingredients",
+            name: "Unknown Product",
             status: "doubtful",
             risk: "High",
             jakim: "JAKIM-UNK-000",
             confidence: 0,
-            details: "Product image does not provide sufficient ingredient information. Upload packaging with visible ingredients list or product name.",
+            details: "Please provide product name (e.g., 'Curry Noodles', 'Gummy Bears') or upload ingredient list for halal analysis.",
           },
         ],
       };
