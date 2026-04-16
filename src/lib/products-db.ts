@@ -13,8 +13,8 @@ export interface ProductEntry {
 export const PRODUCTS_DATABASE: ProductEntry[] = [
   {
     name: "Curry Noodles",
-    aliases: ["Curry noodle", "Curry instant noodles"],
-    ingredients: ["Wheat flour", "Curry flavoring", "MSG", "E631", "E627", "Palm oil", "Salt"],
+    aliases: ["Curry noodle", "Curry instant noodles", "Maggi curry", "Maggy curry", "Maggi", "Maggy"],
+    ingredients: ["Wheat flour", "Curry flavoring", "MSG", "E631", "E627", "Palm oil", "Salt", "E471", "E481"],
     typical_status: "doubtful",
   },
   {
