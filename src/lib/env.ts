@@ -8,7 +8,7 @@ interface EnvConfig {
   NEXT_PUBLIC_SUPABASE_URL: string;
   NEXT_PUBLIC_SUPABASE_ANON_KEY: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
-  GROQ_API_KEY: string;
+  OPENAI_API_KEY: string;
 }
 
 function validateEnv(): EnvConfig {
@@ -16,7 +16,7 @@ function validateEnv(): EnvConfig {
     "NEXT_PUBLIC_SUPABASE_URL",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY",
     "SUPABASE_SERVICE_ROLE_KEY",
-    "GROQ_API_KEY",
+    "OPENAI_API_KEY",
   ] as const;
 
   const missing = required.filter((key) => !process.env[key]);
@@ -32,7 +32,7 @@ function validateEnv(): EnvConfig {
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL!,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    GROQ_API_KEY: process.env.GROQ_API_KEY!,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY!,
   };
 }
 

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import Groq from "groq-sdk";
 import { rateLimit, getIP } from "@/lib/rate-limit";
 import { env } from "@/lib/env";
 import { createServerClient } from "@supabase/ssr";
@@ -151,8 +150,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!env.GROQ_API_KEY) {
-    void writeLog({ type: "api_error", message: "GROQ_API_KEY not configured", ip_address: ip });
+  if (!env.OPENAI_API_KEY) {
+    void writeLog({ type: "api_error", message: "OPENAI_API_KEY not configured", ip_address: ip });
     return NextResponse.json({ error: "AI service not configured" }, { status: 500 });
   }
 
@@ -212,33 +211,45 @@ export async function POST(req: NextRequest) {
     const bytes = await file.arrayBuffer();
     const base64 = Buffer.from(bytes).toString("base64");
 
-    const groq = new Groq({ apiKey: env.GROQ_API_KEY });
+    // Use OpenAI Vision API
+    const prompt = buildPrompt(localContext);
 
-    const result = await groq.messages.create({
-      model: "llama-2-90b-vision-preview",
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: file.type as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-                data: base64,
+    const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        max_tokens: 2000,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: prompt,
               },
-            },
-            {
-              type: "text",
-              text: buildPrompt(localContext),
-            },
-          ],
-        },
-      ],
-      max_tokens: 2000,
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:${file.type};base64,${base64}`,
+                },
+              },
+            ],
+          },
+        ],
+      }),
     });
 
-    let jsonStr = (result.content[0] as { type: string; text?: string }).text?.trim() || "";
+    if (!openaiResponse.ok) {
+      const errorData = await openaiResponse.json();
+      throw new Error(`OpenAI API error: ${openaiResponse.status} - ${JSON.stringify(errorData)}`);
+    }
+
+    const result = await openaiResponse.json();
+    let jsonStr = result.choices?.[0]?.message?.content?.trim() || "";
 
     // Strip markdown code fences if present
     if (jsonStr.startsWith("```")) {
