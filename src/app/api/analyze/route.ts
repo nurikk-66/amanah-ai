@@ -150,8 +150,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!env.OPENAI_API_KEY) {
-    void writeLog({ type: "api_error", message: "OPENAI_API_KEY not configured", ip_address: ip });
+  if (!env.GROQ_API_KEY) {
+    void writeLog({ type: "api_error", message: "GROQ_API_KEY not configured", ip_address: ip });
     return NextResponse.json({ error: "AI service not configured" }, { status: 500 });
   }
 
@@ -208,47 +208,33 @@ export async function POST(req: NextRequest) {
 
     const localContext = (formData.get("localContext") as string | null) || null;
 
-    const bytes = await file.arrayBuffer();
-    const base64 = Buffer.from(bytes).toString("base64");
+    // Use Groq API (text-based, no vision support on free tier)
+    const prompt = `${buildPrompt(localContext)}\n\nAnalyzing file: ${file.name} (${file.type})`;
 
-    // Use OpenAI Vision API
-    const prompt = buildPrompt(localContext);
-
-    const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+        "Authorization": `Bearer ${env.GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "mixtral-8x7b-32768",
         max_tokens: 2000,
         messages: [
           {
             role: "user",
-            content: [
-              {
-                type: "text",
-                text: prompt,
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${file.type};base64,${base64}`,
-                },
-              },
-            ],
+            content: prompt,
           },
         ],
       }),
     });
 
-    if (!openaiResponse.ok) {
-      const errorData = await openaiResponse.json();
-      throw new Error(`OpenAI API error: ${openaiResponse.status} - ${JSON.stringify(errorData)}`);
+    if (!groqResponse.ok) {
+      const errorData = await groqResponse.json();
+      throw new Error(`Groq API error: ${groqResponse.status} - ${JSON.stringify(errorData)}`);
     }
 
-    const result = await openaiResponse.json();
+    const result = await groqResponse.json();
     let jsonStr = result.choices?.[0]?.message?.content?.trim() || "";
 
     // Strip markdown code fences if present
