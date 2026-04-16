@@ -16,7 +16,7 @@ function validateEnv(): EnvConfig {
     "NEXT_PUBLIC_SUPABASE_URL",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY",
     "SUPABASE_SERVICE_ROLE_KEY",
-    "OPENAI_API_KEY",
+    "GROQ_API_KEY",
   ] as const;
 
   const missing = required.filter((key) => !process.env[key]);
